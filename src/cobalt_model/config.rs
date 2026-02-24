@@ -1,6 +1,7 @@
 use std::fmt;
 use std::path;
 
+use liquid::ValueView;
 use log::debug;
 use serde::Serialize;
 use serde_yaml;
@@ -113,6 +114,7 @@ impl Config {
                 .then(|| syntax_highlight.theme.clone()),
         };
         let markdown = mark::MarkdownBuilder {
+            base_url: (&site.base_url).as_ref().map(|s| s.to_string()),
             syntax: syntax.clone(),
             theme: syntax_highlight
                 .enabled

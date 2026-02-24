@@ -13,6 +13,7 @@ use regex::Regex;
 use rss::Category;
 
 use crate::cobalt_model;
+use crate::cobalt_model::Markdown;
 use crate::cobalt_model::Minify;
 use crate::cobalt_model::files;
 use crate::cobalt_model::permalink;
@@ -24,6 +25,9 @@ pub(crate) struct RenderContext<'a> {
     pub(crate) markdown: &'a cobalt_model::Markdown,
     pub(crate) globals: &'a Object,
     pub(crate) minify: Minify,
+
+    /// The URL path of the document being rendered, used for resolving relative links
+    pub(crate) rendering_path: relative_path::RelativePathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +37,7 @@ pub(crate) struct Document {
     pub(crate) content: liquid::model::KString,
     pub(crate) attributes: Object,
     pub(crate) front: cobalt_model::Frontmatter,
+    non_templated_content: Option<String>,
 }
 
 impl Document {
@@ -68,6 +73,7 @@ impl Document {
             content,
             attributes: doc_attributes,
             front,
+            non_templated_content: None,
         })
     }
 
@@ -175,8 +181,8 @@ impl Document {
     /// Takes `content` string and returns rendered HTML. This function doesn't
     /// take `"extends"` attribute into account. This function can be used for
     /// rendering content or excerpt.
-    fn render_html(&self, content: &str, context: &RenderContext<'_>) -> Result<String> {
-        let html = if self.front.templated {
+    fn render_html(&self, content: &str, context: &RenderContext<'_>) -> Result<(String, String)> {
+        let html_or_markdown = if self.front.templated {
             let template = context.parser.parse(content)?;
             template.render(context.globals)?
         } else {
@@ -184,11 +190,13 @@ impl Document {
         };
 
         let html = match self.front.format {
-            cobalt_model::SourceFormat::Raw => html,
-            cobalt_model::SourceFormat::Markdown => context.markdown.parse(&html)?,
+            cobalt_model::SourceFormat::Raw => html_or_markdown.clone(),
+            cobalt_model::SourceFormat::Markdown => {
+                context.markdown.parse(&html_or_markdown, &self.url_path)?
+            }
         };
 
-        Ok(html)
+        Ok((html_or_markdown,html))
     }
 
     /// Renders the excerpt and adds it to attributes of the document.
@@ -199,7 +207,7 @@ impl Document {
     /// value.
     pub(crate) fn render_excerpt(&mut self, context: &RenderContext<'_>) -> Result<()> {
         let value = if let Some(excerpt_str) = self.front.excerpt.as_ref() {
-            let excerpt = self.render_html(excerpt_str, context)?;
+            let (excerpt, _) = self.render_html(excerpt_str, context)?;
             Value::scalar(excerpt)
         } else if self.front.excerpt_separator.is_empty() {
             Value::Nil
@@ -209,7 +217,7 @@ impl Document {
                 self.front.format,
                 &self.front.excerpt_separator,
             );
-            let excerpt = self.render_html(&excerpt, context)?;
+            let (excerpt,_) = self.render_html(&excerpt, context)?;
             Value::scalar(excerpt)
         };
 
@@ -221,10 +229,27 @@ impl Document {
     ///
     /// When we say "content" we mean only this document without extended layout.
     pub(crate) fn render_content(&mut self, context: &RenderContext<'_>) -> Result<()> {
-        let content_html = self.render_html(&self.content, context)?;
+        let (content_raw, content_html) = self.render_html(&self.content, context)?;
         self.attributes
             .insert("content".into(), Value::scalar(content_html));
+        self.non_templated_content = Some(content_raw);
         Ok(())
+    }
+
+    pub(crate) fn attributes_with_relative_content(&self, markdown: &Markdown) -> Result<Object> {
+        let non_templated_content = self.non_templated_content.as_ref().unwrap().to_string();
+        let html = match self.front.format {
+            cobalt_model::SourceFormat::Raw => non_templated_content,
+            cobalt_model::SourceFormat::Markdown => {
+                markdown.parse(&non_templated_content, &self.url_path)?
+            }
+        };
+        let mut attributes = self.attributes.clone();
+                attributes
+            .insert("content".into(), Value::scalar(html));
+
+        Ok(attributes)
+
     }
 
     /// Renders the document to an HTML string.

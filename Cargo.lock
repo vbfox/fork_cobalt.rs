@@ -375,6 +375,7 @@ dependencies = [
  "time",
  "toml",
  "trycmd",
+ "url",
  "walkdir",
 ]
 

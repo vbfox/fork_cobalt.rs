@@ -6,6 +6,7 @@ use std::path;
 use anyhow::Context as _;
 use jsonfeed::Feed;
 use log::debug;
+use log::info;
 use log::trace;
 use log::warn;
 use sitemap::writer::SiteMapWriter;
@@ -182,6 +183,12 @@ fn generate_doc(
     context: &Context,
     global_collection: (liquid::model::KString, liquid::model::Value),
 ) -> Result<()> {
+    info!("Generating {}", doc.url_path);
+    info!("global_collection {}", global_collection.0);
+    // Print global_collection for debugging
+    // debug!("Global collection: {:?}", global_collection.map(|(k, v)| k));
+
+
     // Everything done with `globals` is terrible for performance.  liquid#95 allows us to
     // improve this.
     let mut globals: liquid::Object = vec![
@@ -203,6 +210,7 @@ fn generate_doc(
             markdown: &context.markdown,
             globals: &globals,
             minify: context.minify.clone(),
+            rendering_path: doc.file_path.clone(),
         };
 
         doc.render_excerpt(&render_context).with_context(|| {
@@ -223,6 +231,7 @@ fn generate_doc(
         markdown: &context.markdown,
         globals: &globals,
         minify: context.minify.clone(),
+        rendering_path: doc.file_path.clone(),
     };
     let doc_html = doc
         .render(&render_context, &context.layouts)
@@ -234,15 +243,17 @@ fn generate_doc(
 fn generate_pages(posts: Vec<Document>, documents: Vec<Document>, context: &Context) -> Result<()> {
     // during post rendering additional attributes such as content were
     // added to posts. collect them so that non-post documents can access them
-    let posts_data: Vec<liquid::model::Value> = posts
-        .into_iter()
-        .map(|x| liquid::model::Value::Object(x.attributes))
-        .collect();
 
     trace!("Generating other documents");
     for mut doc in documents {
+        let posts_data: Vec<liquid::model::Value> = posts
+            .iter()
+            .map(|x| liquid::model::Value::Object(x.attributes_with_relative_content(&context.markdown).unwrap()))
+            .collect();
+
         trace!("Generating {}", doc.url_path);
         if doc.front.pagination.is_some() {
+            info!("Generating page with pagination {}", doc.url_path);
             let paginators = pagination::generate_paginators(&mut doc, &posts_data)?;
             // page 1 uses frontmatter.permalink instead of paginator.permalink
             let mut paginators = paginators.into_iter();
@@ -260,6 +271,7 @@ fn generate_pages(posts: Vec<Document>, documents: Vec<Document>, context: &Cont
             for paginator in paginators {
                 let mut doc_page = doc.clone();
                 doc_page.file_path = permalink::format_url_as_file(&paginator.index_permalink);
+                info!("Generating paginated page {}", doc_page.url_path);
                 generate_doc(
                     &mut doc_page,
                     context,
@@ -270,6 +282,7 @@ fn generate_pages(posts: Vec<Document>, documents: Vec<Document>, context: &Cont
                 )?;
             }
         } else {
+            info!("Generating page without pagination {}", doc.url_path);
             generate_doc(
                 &mut doc,
                 context,
@@ -517,9 +530,6 @@ fn create_sitemap(
         doc.to_sitemap(link, &mut urls)?;
     }
 
-    let link = base_url
-        .as_ref()
-        .ok_or_else(|| anyhow::format_err!("`base_url` is required for sitemap support"))?;
     for doc in documents_pages {
         doc.to_sitemap(link, &mut urls)?;
     }

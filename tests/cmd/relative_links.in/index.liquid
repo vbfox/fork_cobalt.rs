@@ -1,0 +1,19 @@
+---
+pagination:
+  include: All
+---
+<!DOCTYPE html>
+<html>
+  <body>
+    {% for post in paginator.pages %}
+      <div class="post">
+        <h2>
+            <a class="post-link" href="{{ post.permalink }}">{{ post.title }}</a>
+        </h2>
+        <article>
+          {{ post.content }}
+        </article>
+      </div>
+    {% endfor %}
+  </body>
+</html>

@@ -21,6 +21,8 @@ DEBUG: glob converted to regex: Glob { glob: "**/_*", re: "(?-u)^(?:/?|.*/)_[^/]
 DEBUG: built glob set; 0 literals, 0 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 2 regexes
 DEBUG: Loading snippets from `./_includes`
 DEBUG: Creating RSS file at ./_site/rss.xml
+Normalizing link: posts/post-1.html with url_path: index.html and base_url http://example.com, full_url http://example.com/index.html
+Normalizing link: posts/post-1.html with url_path: my-new-special-page.html and base_url http://example.com, full_url http://example.com/my-new-special-page.html
 Build successful
 
 ```
